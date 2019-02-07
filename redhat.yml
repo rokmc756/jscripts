@@ -1,0 +1,323 @@
+---
+
+# Install Greenplum Command Center v1 on Red Hat / CentOS
+
+- name: Check if the Greenplum Database software is already installed
+  stat: path=/usr/local/greenplum-db
+  register: gpdb_installed
+
+- name: Stop if database software is not installed
+  fail: msg="Greenplum Database software is not installed!"
+  when: gpdb_installed.stat.exists != True
+
+- name: Verify that database is up and running
+  become_user: gpadmin
+  changed_when: False
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && psql -c "SELECT VERSION()" )
+  register: select_version
+  failed_when: "'(Greenplum Database ' not in select_version.stdout"
+
+- name: Check if the Command Center version is already installed
+  stat: path=/usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}
+  register: gpcc1_installed
+
+- name: Copy Command Center zip file
+  copy: src=greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}-LINUX-x86_64.zip dest=/home/gpadmin/gpcc1.zip mode=0644 owner=gpadmin group=gpadmin
+  when: gpcc1_installed.stat.exists != True
+
+- name: Remove old temp installer directory
+  file: path=/home/gpadmin/gpcc1-tmp-install state=absent
+  changed_when: False
+  when: gpcc1_installed.stat.exists != True
+
+- name: Create new temp installer directory
+  file: path=/home/gpadmin/gpcc1-tmp-install state=directory owner=gpadmin group=gpadmin
+  changed_when: False
+  when: gpcc1_installed.stat.exists != True
+
+- name: Unzip Command Center archive
+  unarchive: src=/home/gpadmin/gpcc1.zip dest=/home/gpadmin/gpcc1-tmp-install remote_src=yes owner=gpadmin group=gpadmin
+  when: gpcc1_installed.stat.exists != True
+
+# make next tasks easier by not always using the Ansible variables in the filename
+- name: Rename .bin file
+  command: creates=/home/gpadmin/gpcc1-tmp-install/gpcc1.bin mv /home/gpadmin/gpcc1-tmp-install/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}-LINUX-x86_64.bin /home/gpadmin/gpcc1-tmp-install/gpcc1.bin
+  when: gpcc1_installed.stat.exists != True
+
+#- name: Accept license and make unattended installation possible
+#  become_user: gpadmin
+#  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && expect -c "
+#    exp_internal -f /home/gpadmin/debug_info.log 0;
+#    send '\r';
+#    spawn /home/gpadmin/gpcc1-tmp-install/gpcc1.bin;
+#    expect {
+#        '*More*' {
+#            send ' ';
+#            exp_continue;
+#        }
+#        '*Do you accept the Pivotal Greenplum Database end user license*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*press ENTER to accept the default installation path*' {
+#            send '\n';
+#            exp_continue;
+#        }
+#        '*Install Greenplum Command Center into*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*Create /usr/local/greenplum-cc-web*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*Install on standby master*'{
+#            send 'no\n';
+#            exp_continue;
+#        }
+#    }" )
+#  when: gpcc1_installed.stat.exists != True
+
+# This will only work on the first run (secured by gpcc1_installed.stat.exists != True)
+# Note: You hereby accept the license! Please see installer for remaining questions.
+- name: First accept license and make unattended installation possible
+  lineinfile:
+    dest: /home/gpadmin/gpcc1-tmp-install/gpcc1.bin
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: "{{ item.state }}"
+  with_items:
+    - { regexp: '^more <<-EOF', line: 'cat <<-EOF', state: present, backrefs: no }
+    - { regexp: '^agreed=', line: 'agreed=1', state: present, backrefs: yes }
+    - { regexp: '^installPath=$', line: 'installPath=/usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}', state: present, backrefs: yes }
+    - { regexp: '^        pathVerification=', line: '        pathVerification=1', state: present, backrefs: yes }
+    - { regexp: '^    agreed=', line: '    agreed=1', state: present, backrefs: yes }
+  when: gpcc1_installed.stat.exists != True
+
+# By Jack
+# - Skip to install gpcc at standby master automatically
+# - Filter EOF error occured by modifing this file as using redirect option
+# - Skip to type hostname of stnadby master node.
+- name: Second make unattended installation possible
+  become_user: gpadmin
+  shell: ( sed -i '987c if\ [\ !\ -z\ \"\${GPHOME}\"\ ]\ &&\ [\ !\ -z\ \$standby\ ]\;\ then' /home/gpadmin/gpcc1-tmp-install/gpcc1.bin ;
+           sed -i '1022c tail\ -n\ +\${SKIP}\ \$0\ \|\ \${TAR}\ zxf\ -\ -C\ \${installPath}\ \>\ /dev/null\ 2\>\&1\;\ fnums\=\`ls\ \${installPath}\ \|\ wc\ -l\`/g' /home/gpadmin/gpcc1-tmp-install/gpcc1.bin ;
+           sed -i '1023c if\ [\ \$\?\ -eq\ 0\ ]\ &&\ [\ \$fnums\ -lt\ 1\ ]\;\ then' /home/gpadmin/gpcc1-tmp-install/gpcc1.bin )
+  when: gpcc1_installed.stat.exists != True
+
+
+- name: Install Command Center software in /usr/local
+  become_user: gpadmin
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && /home/gpadmin/gpcc1-tmp-install/gpcc1.bin )
+  when: gpcc1_installed.stat.exists != True
+
+- name: Remove temp installer directory
+  file: path=/home/gpadmin/gpcc1-tmp-install state=absent
+  changed_when: False
+  when: gpcc1_installed.stat.exists != True
+
+- name: Check again if the Command Center version is already installed
+  stat: path=/usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}
+  register: gpcc1_installed
+
+- name: Stop if Command Center software is not installed
+  fail: msg="Command Center software is not installed!"
+  when: gpcc1_installed.stat.exists != True
+
+# Status: Command Center software is installed
+- name: Set default values for run mode variables
+  set_fact:
+    gpcc1_gpperfmon_install: False
+    gpcc1_setup_cc_sne: False
+
+- name: Verify that gpperfmon is not installed (1)
+  become_user: gpadmin
+  changed_when: False
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && psql -c "SELECT COUNT(*) AS count FROM pg_database WHERE datname = 'gpperfmon'" )
+  register: select_gpperfmon
+
+- name: Verify that gpperfmon is not installed (1)
+  set_fact:
+    gpcc1_gpperfmon_install: True
+  when: select_gpperfmon.stdout.find('     0') != -1
+
+- name: Install gpperfmon agents
+  become_user: gpadmin
+  changed_when: False
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && gpperfmon_install --enable --password 'changeme' --port 5432 )
+  when: gpcc1_gpperfmon_install == True
+
+# the gpcc_path.sh from the new installation does not have $GPPERFMONHOME
+- name: Add GPPERFMONHOME to gpcc_path.sh
+  lineinfile:
+    dest: /usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}/gpcc_path.sh
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: "{{ item.state }}"
+  with_items:
+    - { regexp: '^export GPPERFMONHOME=', line: 'export GPPERFMONHOME=/usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}', state: present }
+  when: gpcc1_gpperfmon_install == True
+  # dest: /usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}-build-{{ gpcc1_build_version }}/gpcc_path.sh
+  # - { regexp: '^export GPPERFMONHOME=', line: 'export GPPERFMONHOME=/usr/local/greenplum-cc-web-{{ gpcc1_major_version }}.{{ gpcc1_minor_version }}-build-{{ gpcc1_build_version }}', state: present }
+
+- name: Add login to pg_hba.conf
+  lineinfile:
+    dest: /data/master/gpsne-1/pg_hba.conf
+    line: "{{ item.line }}"
+    state: "{{ item.state }}"
+  with_items:
+    - { line: 'host     all         gpmon         ::1/128    md5', state: present }
+  when: gpcc1_gpperfmon_install == True
+
+- name: Copy Command Center setup config file
+  copy: src=gpcmdr_setup.ini dest=/home/gpadmin/gpcmdr_setup.ini mode=0644 owner=gpadmin group=gpadmin
+  #when: gpcc1_installed.stat.exists != True
+
+- name: Shutdown database
+  become_user: gpadmin
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && gpstop -a )
+  when: gpcc1_gpperfmon_install == True
+  async: 60
+  poll: 5
+
+- name: Start database
+  become_user: gpadmin
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && gpstart -a )
+  when: gpcc1_gpperfmon_install == True
+  async: 60
+  poll: 5
+
+- name: Verify that gpperfmon is installed (1)
+  become_user: gpadmin
+  changed_when: False
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && psql -c "SELECT COUNT(*) AS count FROM pg_database WHERE datname = 'gpperfmon'" )
+  register: select_gpperfmon
+
+- name: Verify that gpperfmon is not installed (1)
+  fail: msg="gpperfmon agents are not installed!"
+  when: gpcc1_gpperfmon_install == True and select_gpperfmon.stdout.find('     1') == -1
+
+
+# no need (for now) to copy the installation with gpccinstall to other hosts
+# this is a single node installation
+
+#gpcmdr --setup sne --config_file /home/gpadmin/gpcmdr_setup.ini
+
+#gpcmdr --start sne
+
+#/usr/local/greenplum-cc-web-1.3.0.3-build-18/instances/sne
+#/usr/local/greenplum-cc-web/instances/sne/
+
+- name: Verify that Command Center instance is installed (1)
+  stat: path=/usr/local/greenplum-cc-web/instances/sne/
+  register: gpcc1_sne_configured
+
+- name: Verify that Command Center instance is installed (2)
+  set_fact:
+    gpcc1_setup_cc_sne: True
+  when: gpcc1_sne_configured.stat.exists != True
+
+#- name: Setup Command Center instance
+#  become_user: gpadmin
+#  changed_when: False
+#  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && . /usr/local/greenplum-cc-web/gpcc_path.sh && expect -c '
+#    set timeout 3;
+#    spawn gpcmdr --setup
+#
+#    expect "(.*)Please enter the instance name(.*)"
+#    send "sne\n"
+#
+#    expect "(.*)Please enter the display name for this instance(.*)"
+#    send "\n"
+#
+#    expect "(.*)Is the master host for the Greenplum Database remote(.*)"
+#    send "\n"
+#
+#    expect "(.*)What port does the Greenplum Database use(.*)"
+#    send "\n"
+#
+#    expect "(.*)Enable kerberos login for this instance(.*)"
+#    send "\n"
+#
+#    expect "(.*)What port would you like the new web server to use for this instance(.*)"
+#    send "\n"
+#
+#    expect "(.*)Enable SSL for the Web API(.*)"
+#    send "\n"
+#
+#    expect "(.*)Copy the instance to a standby master host(.*)"
+#    send "N\n"
+#
+#    expect eof' )
+#  when: gpcc1_setup_cc_sne == True
+
+# Question list
+# Please enter the instance name
+# Please enter the display name for this instance:(Press ENTER to use instance name)
+# Is the master host for the Greenplum Database remote? Yy/Nn (default=N)
+# What port does the Greenplum Database use? (default=5432)
+# Enable kerberos login for this instance? Yy/Nn (default=N)
+# What port would you like the new web server to use for this instance? (default=28080)
+# Enable SSL for the Web API Yy/Nn (default=N)
+# Copy the instance to a standby master host Yy/Nn (default=Y)
+
+#    command: ( . /usr/local/greenplum-db/greenplum_path.sh && . /usr/local/greenplum-cc-web/gpcc_path.sh && gpcmdr --setup --config_file /home/gpadmin/gpcmdr_setup.ini )
+# command: ( . /usr/local/greenplum-db/greenplum_path.sh && . /usr/local/greenplum-cc-web/gpcc_path.sh && gpcmdr --setup --config_file /home/gpadmin/gpcmdr_setup.ini )
+#
+#- name: Accept license and make unattended installation possible
+#  become_user: gpadmin
+#  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && expect -c "
+#    exp_internal -f /home/gpadmin/debug_info.log 0;
+#    send '\r';
+#    spawn /home/gpadmin/gpcc1-tmp-install/gpcc1.bin;
+#    expect {
+#        '*More*' {
+#            send ' ';
+#            exp_continue;
+#        }
+#        '*Do you accept the Pivotal Greenplum Database end user license*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*press ENTER to accept the default installation path*' {
+#            send '\n';
+#            exp_continue;
+#        }
+#        '*Install Greenplum Command Center into*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*Create /usr/local/greenplum-cc-web*' {
+#            send 'yes\n';
+#            exp_continue;
+#        }
+#        '*Install on standby master*'{
+#            send 'no\n';
+#            exp_continue;
+#        }
+#    }" )
+#  when: gpcc1_installed.stat.exists != True
+
+- name: Setup Command Center instance
+  become_user: gpadmin
+  changed_when: False
+  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && source /usr/local/greenplum-cc-web/gpcc_path.sh && expect -c "
+    set timeout 300
+    spawn gpcmdr --setup --config_file /home/gpadmin/gpcmdr_setup.ini
+    expect '(.*)What port would you like the new web server to use for this instance(.*)'
+    send '\n'
+    interact
+    exit 0"
+  when: gpcc1_setup_cc_sne == True
+
+  #  shell: ( . /usr/local/greenplum-db/greenplum_path.sh && . /usr/local/greenplum-cc-web/gpcc_path.sh && gpcmdr --start sne )
+- name: Start Command Center instance
+  become_user: gpadmin
+  changed_when: False
+  shell: gpcmdr --start sne
+  when: gpcc1_setup_cc_sne == True
+  # Instance name should be dealt with variable - Jomoon
+
+- name: Command Center instance URL
+  debug: msg="http://{{ inventory_hostname }}:28080/"
+  when: gpcc1_setup_cc_sne == True
