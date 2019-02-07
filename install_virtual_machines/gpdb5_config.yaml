@@ -1,0 +1,38 @@
+mst:
+  active:
+    hostname: mdw
+    memory: 4096
+    cpus: 2
+    ipaddr: "192.168.0.19"
+    osvar: rhel7
+    base_image: rhel76-temp.qcow2
+  standby:
+    hostname: mdw-1
+    memory: 4096
+    cpus: 2
+    ipaddr: "192.168.0.20"
+    osvar: rhel7
+    base_image: rhel76-temp.qcow2
+
+sgmt:
+  1st:
+    hostname: sdw1
+    memory: 4096
+    cpus: 2
+    ipaddr: "192.168.0.21"
+    osvar: rhel7
+    base_image: rhel76-temp.qcow2
+  2nd:
+    hostname: sdw2
+    memory: 4096
+    cpus: 2
+    ipaddr: "192.168.0.22"
+    osvar: rhel7
+    base_image: rhel76-temp.qcow2
+  3rd:
+    hostname: sdw3
+    memory: 4096
+    cpus: 2
+    ipaddr: "192.168.0.23"
+    osvar: "rhel7"
+    base_image: rhel76-temp.qcow2
