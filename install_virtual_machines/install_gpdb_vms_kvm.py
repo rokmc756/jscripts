@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 
 yaml = YAML()
 input_file = 'gpdb5_config.yaml'
-PREFIX = ""
+# PREFIX = ""
 MEMORY = ""
 CPUS = ""
 IPADDR = ""
@@ -22,6 +22,7 @@ MACADDR = ""
 OUTPUT = ""
 VIP = ""
 VIF = ""
+WORK_DIR = ""
 
 # Directory to store images
 BASE_DIR = "/storage"
@@ -38,10 +39,9 @@ iV = ""
 class InstallVMs():
 
     def __init__(self):
-        self.initvar =""
+        self.initvar = ""
 
-    def initialize_domain(PREFIX, BASE_DIR):
-        global WORK_DIR
+    def initialize_domain(self, PREFIX, BASE_DIR):
         WORK_DIR = BASE_DIR + "/" + PREFIX
         osr = os.system("virsh dominfo " + PREFIX + " > /dev/null 2>&1")
         # print osr
@@ -66,14 +66,14 @@ class InstallVMs():
     
         # Create log file
         os.system('sudo touch ' + WORK_DIR + '/' + PREFIX + '.log')
-        print str(datetime.now())+" Destroying the " + PREFIX + " domain (if it exists)..."
+        print str(datetime.now()) + " Destroying the " + PREFIX + " domain (if it exists)..."
     
         # Remove domain with the same name
         os.system("sudo virsh destroy " + PREFIX + " >> " + WORK_DIR + "/" + PREFIX + ".log 2>&1")
         os.system("sudo virsh undefine " + PREFIX + " >> " + WORK_DIR + "/" + PREFIX + ".log 2>&1")
     
     
-    def config_cloudinit(PREFIX, USER_DATA, IPADDR):
+    def config_cloudinit(self, PREFIX, USER_DATA, IPADDR):
         fd = open(WORK_DIR + "/" + USER_DATA, 'w')
         fd.write("#cloud-config\n")
         fd.write("preserve_hostname: False\n")
@@ -115,7 +115,7 @@ class InstallVMs():
     #    fd.write("      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDEv4Q0604MrukxXF7d4RKbLOrfdo29vSLRXTxdNBFFDxZjkyKqq3OnRHboAMc57P74vFDGA/sOJ8Qsqrbo7G/SD4So07RO+PGpGObCkgMtbZoQUC/uDI9W5Ae6fS+Uz8td8GaYz9D1I53ZuHQ+Pzzuu2h43HwWrtgTIdUTAZB7fJhpwASrwb5iLy2EGf7IacBUl/R7G2SNmcTN3i9L2JMVruvnEt1iVU6t0GyXaXftFaXKzQ4ub1OqBcDiyYTv8jiILet/8z5Yl2IqqpF03HHBkAya7q8/WFsJ/QDCTBKsFao/rH8EFqHiXwyMfHkrcnQu3Ga3at6QJJs+CdzYTsfn jomoon@jomoon.jtest.pivotal.io\n")
     #    fd.write("network: {config: disabled}\n")
     
-    def create_image(PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE):
+    def create_image(self, PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE):
     
         os.system("sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + "/" + META_DATA)
         print str(datetime.now()) + " Copying template image..."
@@ -131,7 +131,7 @@ class InstallVMs():
         os.system("sudo virt-install --import --name " + PREFIX + " --ram " + str(MEMORY) + " --vcpus " + str(CPUS) + " --disk " + BASE_DIR + "/" + TARGET_IMAGE + ",format=qcow2,bus=virtio --disk " + WORK_DIR + "/" + CI_ISO + ",device=cdrom --network bridge=br0,model=virtio --network bridge=" + BRIDGE + ",model=virtio --os-type=linux --os-variant=" + OSVAR + " --noautoconsole")
     
     
-    def wait_for_complete(PREFIX):
+    def wait_for_complete(self, PREFIX):
         global VIF
         COUNT=1
         OUTPUT = os.popen("sudo virsh dumpxml " + PREFIX + " | sed -n -e '/mac address/,/source bridge/p' | grep -v 'model|interface|function' | awk -F\\' '/mac address/,/source/ {print $2}'")
@@ -181,7 +181,7 @@ class InstallVMs():
                 break
     
     
-    def cleanup_cloudinit(PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP):
+    def cleanup_cloudinit(self, PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP):
         # Eject cdrom
         print str(datetime.now()) + " Cleaning up cloud-init..."
         os.system("sudo virsh change-media " + PREFIX + " hda --eject --config >> " + WORK_DIR + "/"+ PREFIX +".log")
@@ -189,6 +189,10 @@ class InstallVMs():
         os.system("sudo rm " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + CI_ISO)
         print str(datetime.now()) + " DONE. SSH to " + PREFIX + " using " + VIP + ", with username 'jomoon'."
 
+
+if __name__ == "__main__":
+
+    iV = InstallVMs()
 
     # Main fuctions
     for key, value in yaml.load(open(input_file)).items():
@@ -213,7 +217,7 @@ class InstallVMs():
                         CI_ISO = PREFIX + "-cidata.iso"
                         TARGET_IMAGE = PREFIX + ".qcow2"
     
-                    print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE 
+                    print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE
 
                     iV.initialize_domain(PREFIX, BASE_DIR)
                     iV.config_cloudinit(PREFIX, USER_DATA, IPADDR)
@@ -221,35 +225,3 @@ class InstallVMs():
                     iV.wait_for_complete(PREFIX)
                     iV.cleanup_cloudinit(PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP)
                     sys.exit(1)
-                    
-    
-        elif key == "sgmt":
-            for key in value:
-                if key != "":
-                    for key1, value1 in value[key].items():
-                        if key1 == 'hostname':
-                            PREFIX = value1
-                        if key1 == 'memory':
-                            MEMORY = value1
-                        if key1 == 'cpus':
-                            CPUS = value1
-                        if key1 == 'ipaddr':
-                            IPADDR = value1
-                        if key1 == 'osvar':
-                            OSVAR = value1
-                        if key1 == 'base_image':
-                            BASE_IMAGE = value1
-    
-                        CI_ISO = PREFIX + "-cidata.iso"
-                        TARGET_IMAGE= PREFIX + ".qcow2"
-    
-                    iV.initialize_domain(PREFIX, BASE_DIR)
-                    iV.config_cloudinit(PREFIX, USER_DATA, IPADDR)
-                    iV.create_image(PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE)
-                    iV.wait_for_complete(PREFIX)
-                    iV.cleanup_cloudinit(PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP)
-
-
-if __name__ == "__main__":
-
-    iV = installVMs()
