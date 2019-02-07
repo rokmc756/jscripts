@@ -1,0 +1,21 @@
+1st:
+  hostname: zookeeper01
+  memory: 4096
+  cpus: 2
+  ipaddr: "192.168.0.41"
+  osvar: rhel7
+  base_image: rhel76-temp.qcow2
+2nd:
+  hostname: zookeeper02
+  memory: 4096
+  cpus: 2
+  ipaddr: "192.168.0.42"
+  osvar: rhel7
+  base_image: rhel76-temp.qcow2
+3rd:
+  hostname: zookeeper03
+  memory: 4096
+  cpus: 2
+  ipaddr: "192.168.0.43"
+  osvar: "rhel7"
+  base_image: rhel76-temp.qcow2
