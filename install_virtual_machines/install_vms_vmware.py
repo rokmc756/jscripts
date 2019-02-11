@@ -36,6 +36,8 @@ CI_ISO = ""
 HOST_OS = ""
 VMWARE_PROD = ""
 
+USER = "jomoon"
+
 # Cloud init files
 USER_DATA = "user-data"
 META_DATA = "meta-data"
@@ -58,12 +60,14 @@ class InstallVMs():
     #
     # Pivotals-MacBook-Pro-4:Library root# ./vmrun list
     #Total running VMs: 0
-    def initialize_domain(self, PREFIX, BASE_DIR, HOST_OS, VMWARE_PROD):
+    def initialize_domain( self, PREFIX, BASE_DIR, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME ):
         WORK_DIR = BASE_DIR + "/" + PREFIX
-        # For MacOS
-        print VMWARE_CMD_BASE_DIR + "vmware-vdiskmanager -e " + VMWARE_IMG_BASE_DIR + PREFIX + VMWARE_IMG_FILE_NAME
-        osr = os.system(VMWARE_CMD_BASE_DIR + "vmware-vdiskmanager -e " + VMWARE_IMG_BASE_DIR + PREFIX + VMWARE_IMG_FILE_NAME)
+        # print PREFIX, BASE_DIR, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME
+
+        # For RHEL
+        osr = os.system(VMWARE_CMD_BASE_DIR + "vmware-vdiskmanager -e " + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + VMWARE_IMG_FILE_NAME)
         # osr = os.system(VMWARE_CMD_BASE_DIR + "vmware-vdiskmanager -e " + VMWARE_IMG_BASE_DIR + "centos7-temp.vmwarevm/" + "Virtual\ Disk.vmdk > ")
+        print VMWARE_CMD_BASE_DIR + "vmware-vdiskmanager -e " + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + VMWARE_IMG_FILE_NAME
         print osr
 
         if osr == 0:
@@ -74,6 +78,7 @@ class InstallVMs():
             else:
                 print '\nNot overwriting ' + PREFIX +'. Exiting...'
                 sys.exit(2)
+
 
         # vmrun stop /storage/centos610-temp/centos610.vmx
         # vmrun deleteVM /storage/centos610-temp/centos610.vmx
@@ -93,10 +98,7 @@ class InstallVMs():
         os.system(VMWARE_CMD_BASE_DIR + "vmrun stop " + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
         os.system(VMWARE_CMD_BASE_DIR + "vmrun deleteVM " + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
 
-        # Start clean
-        # os.system('rm -rf ' + VMWARE_IMG_BASE_DIR )
-        # os.system('mkdir -p ' + VMWARE_IMG_BASE_DIR )
-
+        sys.exit(2)
 
     def config_cloudinit(self, PREFIX, USER_DATA, IPADDR):
         fd = open(WORK_DIR + "/" + USER_DATA, 'w')
@@ -132,7 +134,7 @@ class InstallVMs():
         fd.close()
 
 
-    def create_image(self, PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, VMWARE_PROD):
+    def create_image( self, PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME ):
 
         os.system("echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + "/" + META_DATA)
         print str(datetime.now()) + " Copying template image..."
@@ -144,6 +146,8 @@ class InstallVMs():
         print "Cloning VM ..."
         # *************** Need to be modified , source and destination
         print VMWARE_CMD_BASE_DIR + "vmrun -T ws clone " + VMWARE_IMG_BASE_DIR + BASE_IMAGE + "/" + BASE_IMAGE + ".vmx "  + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx full -cloneName=" + PREFIX
+
+        sys.exit(2)
 
         os.system(VMWARE_CMD_BASE_DIR + "vmrun -T ws clone " + VMWARE_IMG_BASE_DIR + BASE_IMAGE + "/" + BASE_IMAGE + ".vmx "  + VMWARE_IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx full -cloneName=" + PREFIX )
 
@@ -206,7 +210,7 @@ class InstallVMs():
 
     # vmrun getGuestIPAddress Path to vmx file
     # vmrun getGuestIPAddress /storage/centos610-temp/centos610.vmx
-    def wait_for_complete(self, PREFIX, HOST_OS, VMWARE_PROD):
+    def wait_for_complete(self, PREFIX, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME ):
         global VIF
         COUNT=1
         OUTPUT = os.popen("sudo virsh dumpxml " + PREFIX + " | sed -n -e '/mac address/,/source bridge/p' | grep -v 'model|interface|function' | awk -F\\' '/mac address/,/source/ {print $2}'")
@@ -241,7 +245,7 @@ class InstallVMs():
 
     # If there are no command to eject iso image, just remove it in the vmx file
     # Otherwise just eject cdrom in running virtual machine by umount command and then remove it in the vmx file
-    def disable_cloudinit(self, PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, HOST_OS, VMWARE_PROD):
+    def disable_cloudinit( self, PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME ):
 
         print str(datetime.now()) + " Cleaning up cloud-init..."
         # vmrun -T ws -gu root -gp rmsidwoalfh runScriptInGuest /storage/centos610-temp/centos610.vmx /bin/bash "touch /etc/cloud/cloud-init.disabled"
@@ -257,27 +261,10 @@ def usage():
     print "check your command"
 
 try:
-# sys.argv 는 인수전체(명령어를 포함한)를 sys.argv[1:] 은 인수만을 가져온다.
-#
-# 콜론의 의미 ( r:fd:k:n:V:D: )
-#
-# - 콜론을 붙일경우에는 반드시 인자를 요구하고 붙이지 않을경우에는 인자를 요구하지 않는다.
-#
-# Parses command line options and parameter list. args is the argument list to be parsed, without the leading reference to the running program.
-# Typically, this means "sys.argv[1:]".
-# options is the string of option letters that the script wants to recognize, with options that require an argument followed by a colon
-# (":"; i.e., the same format that Unix getopt() uses).
-# Note: Unlike GNU getopt(), after a non-option argument, all further arguments are considered also non-options.
-# This is similar to the way non-GNU Unix systems work.
     opts, args = getopt.getopt(sys.argv[1:], "o:p:", ["os","product"])
 except getopt.GetoptError:
     usage()
     sys.exit(2)
-
-#	output = None
-#	verbose = False
-#	print opts
-#	print args		# 인자다음에 따라오는 인자가 아닌 그 이외의 인자를 받는 배열변수
 
 for opt, arg in opts:
     if opt in ("-o", "--os"):
@@ -285,35 +272,34 @@ for opt, arg in opts:
     if opt in ("-p", "--product"):
         VMWARE_PROD = arg
 
-print HOST_OS, VMWARE_PROD
 
 if HOST_OS == "rhel" or HOST_OS == "centos":
     # Directory to store images
     BASE_DIR = "/storage/"
-    WORK_DIR = "/home/jomoon/"
+    WORK_DIR = "/home/" + USER + "/"
     if VMWARE_PROD == "fusion":
-        VMWARE_IMG_BASE_DIR=BASE_DIR
-        VMWARE_CMD_BASE_DIR="/usr/bin/"
-        VMWARE_IMG_FILE_NAME=PREFIX+".vmx"
+        VMWARE_IMG_BASE_DIR = BASE_DIR
+        VMWARE_CMD_BASE_DIR = "/usr/bin/"
+        VMWARE_IMG_FILE_NAME = ".vmdk"
     elif VMWARE_PROD == "ws":
-        VMWARE_IMG_BASE_DIR=BASE_DIR
-        VMWARE_CMD_BASE_DIR="/usr/bin/"
-        VMWARE_IMG_FILE_NAME=PREFIX+".vmx"
+        VMWARE_IMG_BASE_DIR = BASE_DIR
+        VMWARE_CMD_BASE_DIR = "/usr/bin/"
+        VMWARE_IMG_FILE_NAME = ".vmdk"
     else:
         print "No product at rhel or centos"
         sys.exit(2)
 elif HOST_OS == "mac":
     # Directory to store images
     BASE_DIR = "/storage/"
-    WORK_DIR = "/Users/pivotal"
+    WORK_DIR = "/Users/" + USER + "/"
     if VMWARE_PROD == "fusion":
-        VMWARE_IMG_BASE_DIR="/Users/pivotal/Documents/Virtual\ Machines.localized/"
-        VMWARE_CMD_BASE_DIR="/Applications/VMware\ Fusion.app/Contents/Library/"
-        VMWARE_IMG_FILE_NAME=".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
+        VMWARE_IMG_BASE_DIR = WORK_DIR + "Documents/Virtual\ Machines.localized/"
+        VMWARE_CMD_BASE_DIR = "/Applications/VMware\ Fusion.app/Contents/Library/"
+        VMWARE_IMG_FILE_NAME = ".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
     elif VMWARE_PROD == "ws":
-        VMWARE_IMG_BASE_DIR="/Users/pivotal/Documents/Virtual\ Machines.localized/"
-        VMWARE_CMD_BASE_DIR="/Applications/VMware\ Workstation.app/Contents/Library/"
-        VMWARE_IMG_FILE_NAME=".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
+        VMWARE_IMG_BASE_DIR = "/Users/pivotal/Documents/Virtual\ Machines.localized/"
+        VMWARE_CMD_BASE_DIR = "/Applications/VMware\ Workstation.app/Contents/Library/"
+        VMWARE_IMG_FILE_NAME = ".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
     else:
         print "No product at macos"
         sys.exit(2)
@@ -345,11 +331,15 @@ if __name__ == "__main__":
         CI_ISO = PREFIX + "-cidata.iso"
         TARGET_IMAGE = PREFIX + ".qcow2"
 
-        print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE, HOST_OS, VMWARE_PROD
+        print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME
 
-        iV.initialize_domain(PREFIX, BASE_DIR, HOST_OS, VMWARE_PROD)
+        #VMWARE_IMG_BASE_DIR="/Users/pivotal/Documents/Virtual\ Machines.localized/"
+        #VMWARE_CMD_BASE_DIR="/Applications/VMware\ Workstation.app/Contents/Library/"
+        #VMWARE_IMG_FILE_NAME=".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
+
+        iV.initialize_domain(PREFIX, BASE_DIR, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME)
         iV.config_cloudinit(PREFIX, USER_DATA, IPADDR)
-        iV.create_image(PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, VMWARE_PROD)
-        iV.wait_for_complete(PREFIX)
-        iV.disable_cloudinit(PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP)
+        iV.create_image(PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME )
+        iV.wait_for_complete(PREFIX,VMWARE_PROD, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME )
+        iV.disable_cloudinit(PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, VMWARE_CMD_BASE_DIR, VMWARE_IMG_BASE_DIR, VMWARE_IMG_FILE_NAME )
         sys.exit(1)
