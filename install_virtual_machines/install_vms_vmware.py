@@ -128,7 +128,7 @@ class InstallVMs():
         fd.write("ssh_genkeytypes: ['rsa', 'ecdsa']\n")
         fd.write("ssh_authorized_keys:\n")
         fd.write("  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDEv4Q0604MrukxXF7d4RKbLOrfdo29vSLRXTxdNBFFDxZjkyKqq3OnRHboAMc57P74vFDGA/sOJ8Qsqrbo7G/SD4So07RO+PGpGObCkgMtbZoQUC/uDI9W5Ae6fS+Uz8td8GaYz9D1I53ZuHQ+Pzzuu2h43HwWrtgTIdUTAZB7fJhpwASrwb5iLy2EGf7IacBUl/R7G2SNmcTN3i9L2JMVruvnEt1iVU6t0GyXaXftFaXKzQ4ub1OqBcDiyYTv8jiILet/8z5Yl2IqqpF03HHBkAya7q8/WFsJ/QDCTBKsFao/rH8EFqHiXwyMfHkrcnQu3Ga3at6QJJs+CdzYTsfn jomoon@jomoon.jtest.pivotal.io\n")
-        fd.write("ssh_pwauth: False\n")
+        fd.write("ssh_pwauth: True\n")
         fd.write("timezone: Aisa/Seoul\n")
         fd.close()
 
