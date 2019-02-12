@@ -100,7 +100,7 @@ class InstallVMs():
 
 
     def config_cloudinit(self, PREFIX, USER_DATA, IPADDR):
-        fd = open(WORK_DIR + "/" + USER_DATA, 'w')
+        fd = open(WORK_DIR + "/" + PREFIX + "/" + USER_DATA, 'w')
         fd.write("#cloud-config\n")
         fd.write("preserve_hostname: False\n")
         fd.write("hostname: " + PREFIX + "\n")
@@ -135,7 +135,7 @@ class InstallVMs():
 
     def create_image( self, PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
 
-        WORK_DIR = BASE_DIR + "/" + PREFIX
+        WORK_DIR = BASE_DIR + PREFIX
 
         os.system("sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + "/" + META_DATA)
         print str(datetime.now()) + " Copying template image..."
@@ -175,9 +175,24 @@ class InstallVMs():
 
         # Create CD-ROM ISO with cloud-init config
         print str(datetime.now()) + " Generating ISO for cloud-init..."
-        os.system("genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
+        # os.system( CMD_BASE_DIR + "genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
         # $ hdiutil makehybrid -o init.iso -hfs -joliet -iso -default-volume-name cidata config/
+        # os.system( CMD_BASE_DIR + "mkisofs -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -rock {" + USER_DATA + "," + META_DATA + "}" )
+        os.system( "hdiutil makehybrid -o " + BASE_DIR + CI_ISO + " -hfs -joliet -iso -default-volume-name cidata " + BASE_DIR + PREFIX )
+        
+        # -input-charset UTF8 -joliet -rock -volid 'cidata' -output " + WORK_DIR + "/" + CI_ISO + META_DATA + " " + USER_DATA )
         # mkisofs -output init.iso -volid cidata -joliet -rock {user-data,meta-data}
+
+        # For MacOS
+        # vi /Users/pivotal/Documents/Virtual Machines.localized/madlib_centos6.vmwarevm/madlib_centos6.vmx
+        # For Linux
+        # vi /storage/centos610-temp/os6.vmwarevm/madlib_centos6.vmx
+        # numvcpus = "2"
+        # cpuid.coresPerSocket = "1"
+        # memsize = "4096"
+        # ide1:0.fileName = "/Users/pivotal/Downloads/rhel-server-6.6-x86_64-dvd.iso"
+        # It works
+
 
         sys.exit(2)
 
