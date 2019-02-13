@@ -37,7 +37,7 @@ CI_ISO = ""
 HOST_OS = ""
 PROD = ""
 
-USER = "jomoon"
+USER = "pivotal"
 
 # Cloud init files
 USER_DATA = "user-data"
@@ -137,6 +137,7 @@ class InstallVMs():
 
     def create_image( self, PREFIX, WORK_DIR, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
 
+        print "sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + PREFIX + "/" + META_DATA
         os.system("sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + PREFIX + "/" + META_DATA)
         print str(datetime.now()) + " Copying template image..."
 
@@ -145,37 +146,23 @@ class InstallVMs():
 
         if HOST_OS == "mac":
             os.system("mkdir " + IMG_BASE_DIR + PREFIX + ".vmwarevm")
+            IDENT = ".vmwarevm/"
         elif HOST_OS == "rhel" or HOST_OS == "centos":
             os.system("mkdir " + IMG_BASE_DIR + PREFIX )
+            IDENT = "/"
 
         print ""
-        print "Create Dir $VMDIR/$KLONNAME.vmwarevm ..."
+        print "Create Dir " + IMG_BASE_DIR + PREFIX + IDENT + PREFIX
         print "Cloning VM ..."
         # *************** Need to be modified , source and destination
-
-        if HOST_OS == "mac" and PROD == "fusion":
-            IDENT = ".vmwarevm/"
-        else:
-            IDENT = "/"
 
         print CMD_BASE_DIR + "vmrun -T " + PROD + " clone " + IMG_BASE_DIR + BASE_IMAGE + IDENT + BASE_IMAGE + ".vmx "  + IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx full -cloneName=" + PREFIX
         os.system( CMD_BASE_DIR + "vmrun -T " + PROD + " clone " + IMG_BASE_DIR + BASE_IMAGE + IDENT + BASE_IMAGE + ".vmx "  + IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx full -cloneName=" + PREFIX )
 
         # https://www.computerhope.com/issues/ch001721.htm
-        # /storage/centos7-temp/centos7-temp.vmx
-        # ide1:0.fileName = "/home/jomoon/zookeeper01-cidata.iso"
-
-
         # /home/jomoon/.vmware/preferences
- 
-        # vmWizard.isoLocationMRU0.location = "/external_storage02/isos/CentOS-7-x86_64-DVD-1804.iso"
-
-
-        # vmrun -T ws start /storage/centos610-temp/centos610.vmx
-        # For Linux
         # In order to appear it on UI, it should be started with the following command
         # vmrun -T ws start /storage/centos610-temp/centos610.vmx
-
 
         # Create CD-ROM ISO with cloud-init config
         print str(datetime.now()) + " Generating ISO for cloud-init..."
@@ -186,62 +173,38 @@ class InstallVMs():
             os.system( CMD_BASE_DIR + "genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
 
 
-        # -input-charset UTF8 -joliet -rock -volid 'cidata' -output " + WORK_DIR + "/" + CI_ISO + META_DATA + " " + USER_DATA )
-        # mkisofs -output init.iso -volid cidata -joliet -rock {user-data,meta-data}
-
-        # For MacOS
-        # vi /Users/pivotal/Documents/Virtual Machines.localized/madlib_centos6.vmwarevm/madlib_centos6.vmx
-        # For Linux
-        # vi /storage/centos610-temp/os6.vmwarevm/madlib_centos6.vmx
-        # numvcpus = "2"
-        # cpuid.coresPerSocket = "1"
-        # memsize = "4096"
-        # ide1:0.fileName = "/Users/pivotal/Downloads/rhel-server-6.6-x86_64-dvd.iso"
-        # It works
-
-
         # Need to trim line added by this function.
         for line in fileinput.input(glob.glob('/storage/vmdw/vmdw.vmx'), inplace=1):
             if re.search("^sata0:1", line):
                 line = re.sub('^sata0:1','#sata0:1', line.rstrip('\r\n'))
             print(line)
 
-        fp = open('/storage/vmdw/vmdw.vmx', 'a')
+        # Need to trim line added by this function.
+        for line in fileinput.input( IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx", inplace=1 ):
+            print IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx"
+            if re.search("^sata0:1", line):
+                line = replace('^sata0:1','#sata0:1')
+            sys.stdout.write(line)
+                # line = re.sub('^sata0:1','#sata0:1', line.rstrip('\r\n'))
+            # print(line)
+
+        fp = open( IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx" )
         fp.write("sata0:1.deviceType = \"cdrom-image\"\n")
-        fp.write("sata0:1.fileName = \"/home/jomoon/vmdw-cidata.iso\"\n")
+        fp.write("sata0:1.fileName = \"" + BASE_DIR + CI_ISO +"\"\n")
         fp.write("sata0:1.present = \"TRUE\"\n")
         fp.write("sata0:1.connectionStatus = \"4\"\n")
         fp.close()
 
-        os.system(CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
 
+        print CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx"
         sys.exit(2)
-        
-
+        os.system(CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
 
         # http://talk.manageiq.org/t/cloud-init-on-vmware-provider/1254/13
         # Read comment of ramrexx
-        # vmrun -T ws enableSharedFolders "c:\my VMs\myVM.vmx"
-
-
-
-
-
-        # For MacOS
-        # vi /Users/pivotal/Documents/Virtual Machines.localized/madlib_centos6.vmwarevm/madlib_centos6.vmx
-        # For Linux
-        # vi /storage/centos610-temp/os6.vmwarevm/madlib_centos6.vmx
-        # numvcpus = "2"
-        # cpuid.coresPerSocket = "1"
-        # memsize = "4096"
-        # ide1:0.fileName = "/Users/pivotal/Downloads/rhel-server-6.6-x86_64-dvd.iso"
-        # It works
 
         print str(datetime.now()) + " Installing the domain and adjusting the configuration..."
         print "[INFO] Installing with the following parameters:"
-
-        # os.system("sudo virt-install --import --name " + PREFIX + " --ram " + str(MEMORY) + " --vcpus " + str(CPUS) + " --disk " + BASE_DIR + "/" + TARGET_IMAGE + ",format=qcow2,bus=virtio --disk " + WORK_DIR + "/" + CI_ISO + ",device=cdrom --network bridge=br0,model=virtio --network bridge=" + BRIDGE + ",model=virtio --os-type=linux --os-variant=" + OSVAR + " --noautoconsole")
-        # vmrun -T ws start /storage/centos610-temp/centos610.vmx                
 
         sys.exit(2)
 
