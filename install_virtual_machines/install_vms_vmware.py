@@ -9,9 +9,10 @@
 # .
 # n. eject iso of cloud-init meta-data and user-data
 
-import os, sys, time, getpass, re, getopt
+import os, sys, time, getpass, fileinput, re, glob, getopt
 from datetime import datetime,timedelta
 from ruamel.yaml import YAML
+
 # brew install libyaml
 # brew reinstall libyaml
 # pip install virtualenv
@@ -36,7 +37,7 @@ CI_ISO = ""
 HOST_OS = ""
 PROD = ""
 
-USER = "pivotal"
+USER = "jomoon"
 
 # Cloud init files
 USER_DATA = "user-data"
@@ -59,13 +60,13 @@ class InstallVMs():
     # Disk chain is consistent.
     #
     # Pivotals-MacBook-Pro-4:Library root# ./vmrun list
-    #Total running VMs: 0
+    # Total running VMs: 0
+
     def initialize_domain( self, PREFIX, BASE_DIR, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
-        WORK_DIR = BASE_DIR + PREFIX
 
         # 이미지 없을때 Error 처리할것
         osr = os.system(CMD_BASE_DIR + "vmware-vdiskmanager -e " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + IMG_FILE_NAME + " > /dev/null 2>&1")
-        #print CMD_BASE_DIR + "vmware-vdiskmanager -e " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + IMG_FILE_NAME
+        print CMD_BASE_DIR + "vmware-vdiskmanager -e " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + IMG_FILE_NAME
         # print osr
 
         if osr == 0:
@@ -76,7 +77,6 @@ class InstallVMs():
             else:
                 print '\nNot overwriting ' + PREFIX +'. Exiting...'
                 sys.exit(2)
-
 
         # vmrun stop /storage/centos610-temp/centos610.vmx
         # vmrun deleteVM /storage/centos610-temp/centos610.vmx
@@ -90,16 +90,18 @@ class InstallVMs():
         # should be removed ./inventory.vmls:index1.id = "/storage/centos610-temp/centos610.vmx"
 
         # Create log file
-        os.system('sudo mkdir ' + WORK_DIR )
+        os.system('sudo mkdir ' + WORK_DIR + PREFIX )
         os.system('sudo touch ' + WORK_DIR + '/' + PREFIX + '.log')
         print str(datetime.now()) + " Destroying the " + PREFIX + " domain (if it exists)..."
 
-        # 이미지없을때 error 처리할것
+
+        # Need to handle error when no images
         os.system(CMD_BASE_DIR + "vmrun stop " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx > /dev/null 2>&1")
         os.system(CMD_BASE_DIR + "vmrun deleteVM " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx > /dev/null 2>&1")
 
 
-    def config_cloudinit(self, PREFIX, USER_DATA, IPADDR):
+    def config_cloudinit(self, PREFIX, WORK_DIR, USER_DATA, IPADDR):
+
         fd = open(WORK_DIR + "/" + PREFIX + "/" + USER_DATA, 'w')
         fd.write("#cloud-config\n")
         fd.write("preserve_hostname: False\n")
@@ -133,15 +135,19 @@ class InstallVMs():
         fd.close()
 
 
-    def create_image( self, PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
+    def create_image( self, PREFIX, WORK_DIR, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
 
-        WORK_DIR = BASE_DIR + PREFIX
-
-        os.system("sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + "/" + META_DATA)
+        os.system("sudo echo instance-id: " + PREFIX + "\; local-hostname: " + PREFIX + " > " + WORK_DIR + PREFIX + "/" + META_DATA)
         print str(datetime.now()) + " Copying template image..."
 
+
         # https://communities.vmware.com/thread/515096
-        os.system("mkdir " + IMG_BASE_DIR + PREFIX + ".vmwarevm")
+
+        if HOST_OS == "mac":
+            os.system("mkdir " + IMG_BASE_DIR + PREFIX + ".vmwarevm")
+        elif HOST_OS == "rhel" or HOST_OS == "centos":
+            os.system("mkdir " + IMG_BASE_DIR + PREFIX )
+
         print ""
         print "Create Dir $VMDIR/$KLONNAME.vmwarevm ..."
         print "Cloning VM ..."
@@ -151,13 +157,13 @@ class InstallVMs():
             IDENT = ".vmwarevm/"
         else:
             IDENT = "/"
+
         print CMD_BASE_DIR + "vmrun -T " + PROD + " clone " + IMG_BASE_DIR + BASE_IMAGE + IDENT + BASE_IMAGE + ".vmx "  + IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx full -cloneName=" + PREFIX
         os.system( CMD_BASE_DIR + "vmrun -T " + PROD + " clone " + IMG_BASE_DIR + BASE_IMAGE + IDENT + BASE_IMAGE + ".vmx "  + IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx full -cloneName=" + PREFIX )
 
         # https://www.computerhope.com/issues/ch001721.htm
         # /storage/centos7-temp/centos7-temp.vmx
         # ide1:0.fileName = "/home/jomoon/zookeeper01-cidata.iso"
-
 
 
         # /home/jomoon/.vmware/preferences
@@ -171,15 +177,15 @@ class InstallVMs():
         # vmrun -T ws start /storage/centos610-temp/centos610.vmx
 
 
-
-
         # Create CD-ROM ISO with cloud-init config
         print str(datetime.now()) + " Generating ISO for cloud-init..."
-        # os.system( CMD_BASE_DIR + "genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
-        # $ hdiutil makehybrid -o init.iso -hfs -joliet -iso -default-volume-name cidata config/
-        # os.system( CMD_BASE_DIR + "mkisofs -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -rock {" + USER_DATA + "," + META_DATA + "}" )
-        os.system( "hdiutil makehybrid -o " + BASE_DIR + CI_ISO + " -hfs -joliet -iso -default-volume-name cidata " + BASE_DIR + PREFIX )
-        
+
+        if HOST_OS == "mac":
+            os.system( "hdiutil makehybrid -o " + BASE_DIR + CI_ISO + " -hfs -joliet -iso -default-volume-name cidata " + BASE_DIR + PREFIX )
+        elif HOST_OS == "rhel" or HOST_OS == "centos":
+            os.system( CMD_BASE_DIR + "genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
+
+
         # -input-charset UTF8 -joliet -rock -volid 'cidata' -output " + WORK_DIR + "/" + CI_ISO + META_DATA + " " + USER_DATA )
         # mkisofs -output init.iso -volid cidata -joliet -rock {user-data,meta-data}
 
@@ -194,10 +200,22 @@ class InstallVMs():
         # It works
 
 
-        sys.exit(2)
+        # Need to trim line added by this function.
+        for line in fileinput.input(glob.glob('/storage/vmdw/vmdw.vmx'), inplace=1):
+            if re.search("^sata0:1", line):
+                line = re.sub('^sata0:1','#sata0:1', line.rstrip('\r\n'))
+            print(line)
+
+        fp = open('/storage/vmdw/vmdw.vmx', 'a')
+        fp.write("sata0:1.deviceType = \"cdrom-image\"\n")
+        fp.write("sata0:1.fileName = \"/home/jomoon/vmdw-cidata.iso\"\n")
+        fp.write("sata0:1.present = \"TRUE\"\n")
+        fp.write("sata0:1.connectionStatus = \"4\"\n")
+        fp.close()
 
         os.system(CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
 
+        sys.exit(2)
         
 
 
@@ -314,11 +332,11 @@ elif HOST_OS == "mac":
     if PROD == "fusion":
         IMG_BASE_DIR = BASE_DIR + "Documents/Virtual\ Machines.localized/"
         CMD_BASE_DIR = "/Applications/VMware\ Fusion.app/Contents/Library/"
-        IMG_FILE_NAME = ".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
+        IMG_FILE_NAME = ".vmwarevm/" + PREFIX + "/Virtual\ Disk.vmdk"
     elif PROD == "ws":
         IMG_BASE_DIR = "/Users/pivotal/Documents/Virtual\ Machines.localized/"
         CMD_BASE_DIR = "/Applications/VMware\ Workstation.app/Contents/Library/"
-        IMG_FILE_NAME = ".vmwarevm/"+PREFIX+"/Virtual\ Disk.vmdk"
+        IMG_FILE_NAME = ".vmwarevm/" + PREFIX + "/Virtual\ Disk.vmdk"
     else:
         print "No product at macos"
         sys.exit(2)
@@ -353,8 +371,10 @@ if __name__ == "__main__":
         print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME
 
         iV.initialize_domain( PREFIX, BASE_DIR, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
-        iV.config_cloudinit( PREFIX, USER_DATA, IPADDR )
-        iV.create_image( PREFIX, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
+        iV.config_cloudinit( PREFIX, WORK_DIR, USER_DATA, IPADDR )
+        iV.create_image( PREFIX, WORK_DIR, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
         iV.wait_for_complete( PREFIX, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
         iV.disable_cloudinit( PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
+
         sys.exit(1)
+
