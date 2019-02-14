@@ -3,11 +3,6 @@
 #
 # jomoon@pivotal.io
 #
-# 1. create vm in the specific directory not default directory of vmware fusion
-# 2. clone it with other name
-# .
-# .
-# n. eject iso of cloud-init meta-data and user-data
 
 import os, sys, time, getpass, fileinput, re, glob, getopt
 from datetime import datetime,timedelta
@@ -36,8 +31,8 @@ VIF = ""
 CI_ISO = ""
 HOST_OS = ""
 PROD = ""
-
-USER = "pivotal"
+USER = ""
+VALID_IP_ADDR = ""
 
 # Cloud init files
 USER_DATA = "user-data"
@@ -49,10 +44,10 @@ BRIDGE = "virbr1"
 class InstallVMs():
 
     def __init__(self):
-        self.initvar = ""
 
-#./vmware-vdiskmanager -e /Users/pivotal/Documents/Virtual\ Machines.localized/centos7-temp.vmwarevm/Virtual\ Disk.vmdk
-#Disk chain is consistent.
+        self.initvar = ""
+        self.IS_VALID = 0
+        self.IP = ""
 
     # vmware-vdiskmanager -e file location
     # /Users/pivotal/Documents/Virtual\ Machines.localized/
@@ -161,112 +156,87 @@ class InstallVMs():
 
         # https://www.computerhope.com/issues/ch001721.htm
         # /home/jomoon/.vmware/preferences
-        # In order to appear it on UI, it should be started with the following command
-        # vmrun -T ws start /storage/centos610-temp/centos610.vmx
+
 
         # Create CD-ROM ISO with cloud-init config
         print str(datetime.now()) + " Generating ISO for cloud-init..."
 
         if HOST_OS == "mac":
-            os.system( "hdiutil makehybrid -o " + BASE_DIR + CI_ISO + " -hfs -joliet -iso -default-volume-name cidata " + BASE_DIR + PREFIX )
+            os.system( "hdiutil makehybrid -o " + WORK_DIR + CI_ISO + " -hfs -joliet -iso -default-volume-name cidata " + BASE_DIR + PREFIX )
         elif HOST_OS == "rhel" or HOST_OS == "centos":
             os.system( CMD_BASE_DIR + "genisoimage -input-charset utf-8 -output " + WORK_DIR + "/" + CI_ISO + " -volid cidata -joliet -r " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + META_DATA + " &>> " + WORK_DIR + "/" + PREFIX + ".log")
 
+        print IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx"
 
         # Need to trim line added by this function.
-        for line in fileinput.input(glob.glob('/storage/vmdw/vmdw.vmx'), inplace=1):
+        for line in fileinput.input( glob.glob(IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx"), inplace=1 ):
             if re.search("^sata0:1", line):
                 line = re.sub('^sata0:1','#sata0:1', line.rstrip('\r\n'))
             print(line)
 
-        # Need to trim line added by this function.
-        for line in fileinput.input( IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx", inplace=1 ):
-            print IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx"
-            if re.search("^sata0:1", line):
-                line = replace('^sata0:1','#sata0:1')
-            sys.stdout.write(line)
-                # line = re.sub('^sata0:1','#sata0:1', line.rstrip('\r\n'))
-            # print(line)
-
-        fp = open( IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx" )
+        fp = open( IMG_BASE_DIR + PREFIX + IDENT + PREFIX + ".vmx", 'a' )
         fp.write("sata0:1.deviceType = \"cdrom-image\"\n")
-        fp.write("sata0:1.fileName = \"" + BASE_DIR + CI_ISO +"\"\n")
+        fp.write("sata0:1.fileName = \"" + WORK_DIR + CI_ISO +"\"\n")
         fp.write("sata0:1.present = \"TRUE\"\n")
         fp.write("sata0:1.connectionStatus = \"4\"\n")
         fp.close()
 
 
-        print CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx"
-        sys.exit(2)
+        # In order to appear it on UI, it should be started with the following command
         os.system(CMD_BASE_DIR + "vmrun -T ws start " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
 
-        # http://talk.manageiq.org/t/cloud-init-on-vmware-provider/1254/13
-        # Read comment of ramrexx
+        # http://talk.manageiq.org/t/cloud-init-on-vmware-provider/1254/13 - Read comment of ramrexx
 
         print str(datetime.now()) + " Installing the domain and adjusting the configuration..."
         print "[INFO] Installing with the following parameters:"
 
-        sys.exit(2)
 
-    # vmrun getGuestIPAddress Path to vmx file
-    # vmrun getGuestIPAddress /storage/centos610-temp/centos610.vmx
     def wait_for_complete(self, PREFIX, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
         global VIF
-        COUNT=1
-        OUTPUT = os.popen("sudo virsh dumpxml " + PREFIX + " | sed -n -e '/mac address/,/source bridge/p' | grep -v 'model|interface|function' | awk -F\\' '/mac address/,/source/ {print $2}'")
-        for LINE in OUTPUT.readlines():
-            if ( COUNT == 3 ):
-                MACADDR=LINE.rstrip('\n')
-            elif ( COUNT == 4 ):
-                VIF=LINE.rstrip('\n')
-            COUNT = COUNT + 1
-        OUTPUT.close()
-
-        BCOUNT=1
         while True:
-            with open("/var/lib/libvirt/dnsmasq/" + VIF + ".status", "r") as file_to_read:
-                COUNT=1
-                for line in file_to_read:
-                    if re.search(str(MACADDR), str(line)):
-                        # print str(COUNT) + ' : found a match!' + line
-                        BCOUNT = 0
-                        OUTPUT = os.popen("grep -B1 " + MACADDR +" /var/lib/libvirt/dnsmasq/" + VIF + ".status | head -n 1 | awk '{print $2}' | sed -e s/\\\"//g -e s/,//").readlines()
-                        for CONTENT in OUTPUT:
-                            if CONTENT != "":
-                                global VIP
-                                VIP = CONTENT.rstrip('\n')
-                        break
-                    else:
-                        continue
-                        print str(COUNT) + ' : no match'
-                    COUNT = COUNT + 1
-            if BCOUNT == 0:
+            OUTPUT = os.popen("sudo vmrun -T ws getGuestIPAddress " + IMG_BASE_DIR + PREFIX + "/" + PREFIX + ".vmx")
+            for CONTENT in OUTPUT:
+                VALID_IP_ADDR = re.match("^([1][0-9][0-9].|^[2][5][0-5].|^[2][0-4][0-9].|^[1][0-9][0-9].|^[0-9][0-9].|^[0-9].)([1][0-9][0-9].|[2][5][0-5].|[2][0-4][0-9].|[1][0-9][0-9].|[0-9][0-9].|[0-9].)([1][0-9][0-9].|[2][5][0-5].|[2][0-4][0-9].|[1][0-9][0-9].|[0-9][0-9].|[0-9].)([1][0-9][0-9]|[2][5][0-5]|[2][0-4][0-9]|[1][0-9][0-9]|[0-9][0-9]|[0-9])$",CONTENT)
+                if VALID_IP_ADDR:
+                    # print VALID_IP_ADDR.group(1)+VALID_IP_ADDR.group(2)+VALID_IP_ADDR.group(1)+VALID_IP_ADDR.group(1)
+                    IP = CONTENT
+                    self.IS_VALID = 1
+                    break
+                else:
+                    continue
+
+            if self.IS_VALID == 1:
                 break
+
+        return IP
 
     # If there are no command to eject iso image, just remove it in the vmx file
     # Otherwise just eject cdrom in running virtual machine by umount command and then remove it in the vmx file
+
+
     def disable_cloudinit( self, PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME ):
 
         print str(datetime.now()) + " Cleaning up cloud-init..."
-        # vmrun -T ws -gu root -gp rmsidwoalfh runScriptInGuest /storage/centos610-temp/centos610.vmx /bin/bash "touch /etc/cloud/cloud-init.disabled"
 
+        # vmrun -T ws -gu root -gp rmsidwoalfh runScriptInGuest /storage/centos610-temp/centos610.vmx /bin/bash "touch /etc/cloud/cloud-init.disabled"
         # Eject cdrom
-        os.system("sudo virsh change-media " + PREFIX + " hda --eject --config >> " + WORK_DIR + "/"+ PREFIX +".log")
+        # os.system("sudo virsh change-media " + PREFIX + " hda --eject --config >> " + WORK_DIR + "/"+ PREFIX +".log")
         # Remove the unnecessary cloud init files
-        os.system("sudo rm " + WORK_DIR + "/" + USER_DATA + " " + WORK_DIR + "/" + CI_ISO)
-        print str(datetime.now()) + " DONE. SSH to " + PREFIX + " using " + VIP + ", with username 'jomoon'."
+        # os.system("sudo rm " + WORK_DIR + "/" + PREFIX + "/" + USER_DATA + " " + WORK_DIR + "/" + CI_ISO)
 
 
 def usage():
     print "check your command"
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "o:p:", ["os","product"])
+    opts, args = getopt.getopt(sys.argv[1:], "u:o:p:", ["user","os","product"])
 except getopt.GetoptError:
     usage()
     sys.exit(2)
 
 for opt, arg in opts:
+    if opt in ("-u", "--user"):
+        USER = arg
     if opt in ("-o", "--os"):
         HOST_OS = arg
     if opt in ("-p", "--product"):
@@ -308,6 +278,7 @@ else:
     usage()
     sys.exit(2)
 
+
 if __name__ == "__main__":
 
     iV = InstallVMs()
@@ -331,13 +302,15 @@ if __name__ == "__main__":
         CI_ISO = PREFIX + "-cidata.iso"
         TARGET_IMAGE = PREFIX + ".qcow2"
 
-        print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME
+        # print PREFIX, MEMORY, CPUS, IPADDR, OSVAR, BASE_IMAGE, CI_ISO, TARGET_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME
 
         iV.initialize_domain( PREFIX, BASE_DIR, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
         iV.config_cloudinit( PREFIX, WORK_DIR, USER_DATA, IPADDR )
         iV.create_image( PREFIX, WORK_DIR, META_DATA, MEMORY, CPUS, TARGET_IMAGE, OSVAR, BASE_IMAGE, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
-        iV.wait_for_complete( PREFIX, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
-        iV.disable_cloudinit( PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
+        IP = iV.wait_for_complete( PREFIX, PROD, HOST_OS, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
+        iV.disable_cloudinit( PREFIX, BASE_DIR, USER_DATA, CI_ISO, VIP, HOST_OS, PROD, CMD_BASE_DIR, IMG_BASE_DIR, IMG_FILE_NAME )
 
+        IP = re.sub(r'^\s+$|\n', '', IP)
+
+        print str(datetime.now()) + " - DONE. SSH to " + PREFIX + " using " + IP + " with username '" + USER + "'."
         sys.exit(1)
-
